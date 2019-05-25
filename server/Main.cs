@@ -30,6 +30,8 @@ namespace FxMigrant
     {
         private bool m_ticked;
 
+        private readonly Queue<string> m_migrationQueue = new Queue<string>();
+
         public Main()
         {
             Debug.WriteLine(typeof(MySql.Data.MySqlClient.MySqlConnection).Name);
@@ -40,6 +42,23 @@ namespace FxMigrant
 
         [EventHandler("onServerResourceStart")]
         public async void OnServerResourceStart(string resourceName)
+        {
+            m_migrationQueue.Enqueue(resourceName);
+        }
+
+        [Tick]
+        public async Task RunTick()
+        {
+            m_ticked = true;
+
+            while (m_migrationQueue.Count > 0)
+            {
+                await Delay(0);
+                await MigrateResource(m_migrationQueue.Dequeue());
+            }
+        }
+
+        private async Task MigrateResource(string resourceName)
         {
             var cs = GetConvar("mysql_connection_string", "");
             var numMetaData = GetNumResourceMetadata(resourceName, "migration_file");
@@ -110,12 +129,6 @@ namespace FxMigrant
             }
         }
 
-        [Tick]
-        public void RunTick()
-        {
-            m_ticked = true;
-        }
-
         private async Task<Assembly> LoadMigrationAssembly(string resourceName, string fileName)
         {
             var fileData = LoadResourceFile(resourceName, fileName);
@@ -162,6 +175,7 @@ namespace FxMigrant
                             MetadataReference.CreateFromStream(migratorStream),
                             MetadataReference.CreateFromStream(migratorStreamTwo)
                         )
+
                         .AddSyntaxTrees(syntaxTree);
 
                     using (var peStream = new MemoryStream())
